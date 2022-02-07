@@ -1,2 +1,28 @@
-# aws-utils
-Util functions about AWS using aws-sdk v2.
+# awsome-doctor-utils
+
+Util functions of Awsome Doctor.
+
+## Installation
+
+Browser:
+
+```html
+<script src="https://unpkg.com/awsome-doctor-utils/dist/bundle.js" />
+```
+
+NodeJS:
+
+```bash
+npm install awsome-doctor-utils
+```
+
+Awsome Doctor workflow:
+
+```js
+await $.import("https://unpkg.com/awsome-doctor-utils/dist/bundle.js");
+```
+
+## Usage
+
+- Browser: `window.awsomeUtils`
+- NodeJS: `import utils from 'awsome-doctor-utils';`
