@@ -1,11 +1,8 @@
 /**
- * This file contains the util functions in `$.utils.sg`
- */
-
-/**
  * ## Params
  *
- * - `$`: context
+ * - `ec2`: EC2 client
+ * - `jp`: jsonpath
  * - `instanceIds`: A **list** of EC2 instance id
  * - `direction`: `'in'`/`'out'`
  * - `protocol`: e.g. `'tcp'`/`'udp'`/`'icmp'`
@@ -15,7 +12,7 @@
  *
  * ```
  * {
- *   res, // the response of `describeSecurityGroups`, see https://docs.aws.amazon.com/AWSJavaScriptSDK/v3/latest/clients/client-ec2/interfaces/describesecuritygroupscommandoutput.html
+ *   res, // the response of `describeSecurityGroups`
  *   securityGroupIds: [],
  *   anyTrafficPeer: {
  *     any: true,
@@ -41,20 +38,22 @@
  * ```
  */
 async function checkEC2Instances({
-  $,
+  ec2,
+  jp,
   instanceIds,
   direction,
   protocol,
   port,
 }) {
   let securityGroupIds;
-  let res = await $.aws.ec2.describeInstances({ InstanceIds: instanceIds });
-  securityGroupIds = $.jp.query(res, "$..SecurityGroups[*].GroupId");
+  let res = await ec2.describeInstances({ InstanceIds: instanceIds });
+  securityGroupIds = jp.query(res, "$..SecurityGroups[*].GroupId");
 
   return {
     securityGroupIds,
     ...(await checkPort({
-      $,
+      ec2,
+      jp,
       direction,
       securityGroupIds,
       protocol,
@@ -66,7 +65,8 @@ async function checkEC2Instances({
 /**
  * ## Params
  *
- * - `$`: context
+ * - `ec2`: EC2 client
+ * - `jp`: jsonpath
  * - `direction`: `'in'`/`'out'`
  * - `securityGroupIds`: A **list** of security group id
  * - `protocol`: e.g. `'tcp'`/`'udp'`/`'icmp'`
@@ -76,7 +76,7 @@ async function checkEC2Instances({
  *
  * ```
  * {
- *   res, // the response of `describeSecurityGroups`, see https://docs.aws.amazon.com/AWSJavaScriptSDK/v3/latest/clients/client-ec2/interfaces/describesecuritygroupscommandoutput.html
+ *   res, // the response of `describeSecurityGroups`
  *   anyTrafficPeer: {
  *     any: true,
  *     cidr: [],
@@ -100,14 +100,21 @@ async function checkEC2Instances({
  * }
  * ```
  */
-async function checkPort({ $, direction, securityGroupIds, protocol, port }) {
-  let res = await $.aws.ec2.describeSecurityGroups({
+async function checkPort({
+  ec2,
+  jp,
+  direction,
+  securityGroupIds,
+  protocol,
+  port,
+}) {
+  let res = await ec2.describeSecurityGroups({
     GroupIds: securityGroupIds,
   });
 
   return {
-    anyTrafficPeer: getPeer({ $, res, direction, protocol: "-1" }),
-    peer: getPeer({ $, res, direction, protocol, port }),
+    anyTrafficPeer: getPeer({ jp, res, direction, protocol: "-1" }),
+    peer: getPeer({ jp, res, direction, protocol, port }),
     res,
   };
 }
@@ -115,8 +122,9 @@ async function checkPort({ $, direction, securityGroupIds, protocol, port }) {
 /**
  * ## Params
  *
- * - `$`: context
- * - `res`: the response of `describeSecurityGroups`, see https://docs.aws.amazon.com/AWSJavaScriptSDK/v3/latest/clients/client-ec2/interfaces/describesecuritygroupscommandoutput.html
+ * - `ec2`: EC2 client
+ * - `jp`: jsonpath
+ * - `res`: the response of `describeSecurityGroups`
  * - `direction`: `'in'`/`'out'`
  * - `protocol`: `'tcp'`/`'ucp'`/`'icmp'`/`'-1'`(all)
  * - `port`
@@ -136,7 +144,7 @@ async function checkPort({ $, direction, securityGroupIds, protocol, port }) {
  * }
  * ```
  */
-function getPeer({ $, res, direction, protocol, port }) {
+function getPeer({ jp, res, direction, protocol, port }) {
   let result = {
     any: false,
     cidr: [],
@@ -151,7 +159,7 @@ function getPeer({ $, res, direction, protocol, port }) {
       : `(@.FromPort == -1 || (@.FromPort <= ${port} && (@.ToPort >= ${port} || @.ToPort == -1)))`;
 
   // get sg rules
-  let ipPermissions = $.jp.query(
+  let ipPermissions = jp.query(
     res,
     `$..${
       direction == "in" ? "IpPermissions" : "IpPermissionsEgress"
@@ -161,7 +169,7 @@ function getPeer({ $, res, direction, protocol, port }) {
   if (ipPermissions.length == 0) return result;
 
   // get cidrs
-  $.jp.query(ipPermissions, `$..CidrIp`).map((cidr) => {
+  jp.query(ipPermissions, `$..CidrIp`).map((cidr) => {
     if (cidr == "0.0.0.0/0") {
       result.any = true;
     } else {
@@ -171,14 +179,13 @@ function getPeer({ $, res, direction, protocol, port }) {
   });
 
   // get prefix ids
-  $.jp.query(ipPermissions, `$..PrefixListId`).map((prefix) => {
+  jp.query(ipPermissions, `$..PrefixListId`).map((prefix) => {
     result.prefix.push(prefix);
     result.no = false;
   });
 
   // get peer sgs
-  $.jp
-    .query(ipPermissions, `$..UserIdGroupPairs`)
+  jp.query(ipPermissions, `$..UserIdGroupPairs`)
     .flat()
     .map((userSgPair) => {
       result.sg.push(userSgPair);

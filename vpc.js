@@ -1,11 +1,8 @@
 /**
- * This file contains the util functions in `$.utils.vpc`
- */
-
-/**
  * ## Params
  *
- * - `$`: context
+ * - `ec2`: EC2 client
+ * - `jp`: jsonpath
  * - `subnetId`
  * - `vpcId`: optional VPC Id
  *
@@ -18,10 +15,10 @@
  * }
  * ```
  */
-async function checkSubnetIgw({ $, subnetId, vpcId }) {
-  let res = await getSubnetRouteTable({ $, subnetId, vpcId });
+async function checkSubnetIgw({ ec2, jp, subnetId, vpcId }) {
+  let res = await getSubnetRouteTable({ ec2, jp, subnetId, vpcId });
 
-  let igwCidr = $.jp.query(
+  let igwCidr = jp.query(
     res.rt,
     `$.Routes[?(@.GatewayId.startsWith('igw-'))].DestinationCidrBlock`
   );
@@ -40,7 +37,8 @@ async function checkSubnetIgw({ $, subnetId, vpcId }) {
 /**
  * ## Params
  *
- * - `$`: context
+ * - `ec2`: EC2 client
+ * - `jp`: jsonpath
  * - `subnetId`
  * - `vpcId`: optional VPC Id
  *
@@ -48,14 +46,14 @@ async function checkSubnetIgw({ $, subnetId, vpcId }) {
  *
  * ```
  * {
- *   rt, // route table, see https://docs.aws.amazon.com/AWSJavaScriptSDK/v3/latest/clients/client-ec2/modules/routetable.html
+ *   rt, // route table object in `describeRouteTables`
  * }
  * ```
  */
-async function getSubnetRouteTable({ $, subnetId, vpcId }) {
+async function getSubnetRouteTable({ ec2, jp, subnetId, vpcId }) {
   let res;
   // find route table by subnet id
-  res = await $.aws.ec2.describeRouteTables({
+  res = await ec2.describeRouteTables({
     Filters: [{ Name: "association.subnet-id", Values: [subnetId] }],
   });
 
@@ -65,22 +63,22 @@ async function getSubnetRouteTable({ $, subnetId, vpcId }) {
   } else {
     // use VPC main route table
     if (!vpcId) {
-      res = await $.aws.ec2.describeSubnets({
+      res = await ec2.describeSubnets({
         Filters: [{ Name: "subnet-id", Values: [subnetId] }],
       });
-      vpcId = $.jp.query(res, `$..VpcId`)[0];
+      vpcId = jp.query(res, `$..VpcId`)[0];
     }
 
-    res = await $.aws.ec2.describeRouteTables({
+    res = await ec2.describeRouteTables({
       Filters: [{ Name: "vpc-id", Values: [vpcId] }],
     });
 
-    let routeTableId = $.jp.query(
+    let routeTableId = jp.query(
       res,
       "$..Associations[?(@.Main)].RouteTableId"
     )[0];
     return {
-      rt: $.jp.query(
+      rt: jp.query(
         res,
         `$..RouteTables[?(@.RouteTableId=='${routeTableId}')]`
       )[0],
@@ -91,7 +89,8 @@ async function getSubnetRouteTable({ $, subnetId, vpcId }) {
 /**
  * ## Params
  *
- * - `$`: context
+ * - `ec2`: EC2 client
+ * - `jp`: jsonpath
  * - `subnetId`
  * - `direction`: `'in'`/`'out'`
  * - `protocol`: protocol number(e.g. '17' means udp, '6' means tcp) or tcp/udp/icmp
@@ -110,7 +109,14 @@ async function getSubnetRouteTable({ $, subnetId, vpcId }) {
  * }
  * ```
  */
-async function checkSubnetNacl({ $, subnetId, direction, protocol, port }) {
+async function checkSubnetNacl({
+  ec2,
+  jp,
+  subnetId,
+  direction,
+  protocol,
+  port,
+}) {
   // translate literal protocol to number
   switch (protocol) {
     case "tcp":
@@ -124,17 +130,17 @@ async function checkSubnetNacl({ $, subnetId, direction, protocol, port }) {
       break;
   }
 
-  let res = await $.aws.ec2.describeNetworkAcls({
+  let res = await ec2.describeNetworkAcls({
     Filters: [{ Name: "association.subnet-id", Values: [subnetId] }],
   });
 
-  return checkNacl({ $, res, direction, protocol, port });
+  return checkNacl({ jp, res, direction, protocol, port });
 }
 
 /**
  * ## Params
  *
- * - `$`: context
+ * - `jp`: jsonpath
  * - `res`: the response of `describeNetworkAcls`
  * - `direction`: `'in'`/`'out'`
  * - `protocol`: protocol number, e.g. '17' means udp, '6' means tcp
@@ -153,8 +159,8 @@ async function checkSubnetNacl({ $, subnetId, direction, protocol, port }) {
  * }
  * ```
  */
-function checkNacl({ $, res, direction, protocol, port }) {
-  let rules = $.jp
+function checkNacl({ jp, res, direction, protocol, port }) {
+  let rules = jp
     .query(res, `$..Entries[?(${direction == "in" ? "!" : ""}@.Egress)]`)
     .filter((r) => {
       // filter protocol & port
