@@ -7,7 +7,7 @@ Util functions of Awsome Doctor.
 Browser:
 
 ```html
-<script src="https://unpkg.com/awsome-doctor-utils/dist/bundle.js" />
+<script src="https://unpkg.com/awsome-doctor-utils/dist/bundle.js"></script>
 ```
 
 NodeJS:
